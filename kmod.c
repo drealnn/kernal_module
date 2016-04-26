@@ -8,14 +8,16 @@
 #define  CLASS_NAME  "ebb"        ///< The device class -- this is a character device driver
  
 MODULE_LICENSE("GPL");            ///< The license type -- this affects available functionality
-MODULE_AUTHOR("Derek Molloy");    ///< The author -- visible when you use modinfo
-MODULE_DESCRIPTION("A simple Linux char driver for the BBB");  ///< The description -- see modinfo
+MODULE_AUTHOR("group #47");    ///< The author -- visible when you use modinfo
+MODULE_DESCRIPTION("A simple Linux char driver for cop 4600 hw assignment");  ///< The description -- see modinfo
 MODULE_VERSION("0.1");            ///< A version number to inform users
  
 static int    majorNumber;                  ///< Stores the device number -- determined automatically
-static char   message[256] = {0};           ///< Memory for the string that is passed from userspace
+static char   message[1026] = {0};           ///< Memory for the string that is passed from userspace
 static short  size_of_message;              ///< Used to remember the size of the string stored
 static int    numberOpens = 0;              ///< Counts the number of times the device is opened
+static int    head = -1;
+static int    tail = 0;
 static struct class*  ebbcharClass  = NULL; ///< The device-driver class struct pointer
 static struct device* ebbcharDevice = NULL; ///< The device-driver device struct pointer
  
@@ -24,7 +26,11 @@ static int     dev_open(struct inode *, struct file *);
 static int     dev_release(struct inode *, struct file *);
 static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
- 
+static char *   dequeue(void);
+static void enqueue(char *buffer);
+static int  is_empty(void);
+static int is_full(void);
+
 /** @brief Devices are represented as file structure in the kernel. The file_operations structure from
  *  /linux/fs.h lists the callback functions that you wish to associated with your file operations
  *  using a C99 syntax structure. char devices usually implement open, read, write and release calls
@@ -109,10 +115,11 @@ static int dev_open(struct inode *inodep, struct file *filep){
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
    int error_count = 0;
    // copy_to_user has the format ( * to, *from, size) and returns 0 on success
-   error_count = copy_to_user(buffer, message, size_of_message);
+   //error_count = copy_to_user(buffer, message, size_of_message);
  
    if (error_count==0){            // if true then have success
-      printk(KERN_INFO "EBBChar: Sent %d characters to the user\n", size_of_message);
+      //printk(KERN_INFO "EBBChar: Sent %d characters to the user\n", size_of_message);
+      printk(KERN_INFO "%s", dequeue());
       return (size_of_message=0);  // clear the position to the start and return 0
    }
    else {
@@ -121,6 +128,68 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
    }
 }
  
+static int  is_empty()
+{
+	if(((head + 1 ) % 1026) == tail ) 
+		return 1;
+	else
+		return 0;
+}
+
+static int is_full()
+{
+	if( (tail % 1026) == head)
+		return 1;
+	else 
+		return 0;
+}
+
+static void enqueue(char *buffer)
+{
+	int i;
+	
+	//printk("the string length is %d", strlen(buffer));
+	
+	for (i = 0; i < strlen(buffer); i++)
+	{
+		if(is_full())
+		{
+			printk("Not enough space !!");
+			break;
+		}
+
+		else
+		{
+			message[tail] = buffer[i];
+			tail = (tail + 1) % 1026;
+		}	
+	}
+	//message[tail] = '\0';
+	//tail = (tail + 1 ) % 1026;
+//	printk("\nThe tail is %d", tail);
+//	printk("\nThe head is %d", head);
+	printk("\nThe string that is writing to the buffer is %s", buffer);
+}
+
+static char * dequeue()
+{
+	
+//	printk("\nThe word that is in the global variable buffer is %s", message);
+	char array [1026];
+	int i = 0;
+	//printk("\nThe empty value is %d!", is_empty());
+	while (is_empty() != 1)
+	{
+		head = (head + 1) % 1026;
+		array[i] = message[head];
+		//printk("the letter at index %d is %c", i, array[i]);
+		i++;	
+	}
+	array[i] = '\0';
+	printk("\nThe string that is being read from the buffer is %s", array);
+	return array;
+}
+
 /** @brief This function is called whenever the device is being written to from user space i.e.
  *  data is sent to the device from the user. The data is copied to the message[] array in this
  *  LKM using the sprintf() function along with the length of the string.
@@ -130,9 +199,11 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
  *  @param offset The offset if required
  */
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
-   sprintf(message, "%s(%d letters)", buffer, len);   // appending received string with its length
-   size_of_message = strlen(message);                 // store the length of the stored message
-   printk(KERN_INFO "EBBChar: Received %d characters from the user\n", len);
+   //sprintf(message, "%s(%d letters)", buffer, len);   // appending received string with its length
+   //size_of_message = strlen(message);                 // store the length of the stored message
+   //printk(KERN_INFO "EBBChar: Received %d characters from the user\n", len);
+   len = size_of_message;
+   enqueue(buffer);
    return len;
 }
  
